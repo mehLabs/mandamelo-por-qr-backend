@@ -18,7 +18,7 @@ setInterval(() => {
 //
 
 const server = require('http').createServer(app);
-const port = 8080;
+const port = 7000;
 const {Server} =require('socket.io')
 const io = new Server(server,{
     cors: {
