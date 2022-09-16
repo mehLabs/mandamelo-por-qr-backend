@@ -11,8 +11,7 @@ app.use(cors({
 }))
 
 //ANTES DE ABRIR EL SERVIDOR VOY A BORRAR TODOS LOS ARCHIVOS TEMPORALES
-fs.rmSync("./tmp", { recursive:true, force:true})
-fs.mkdirSync("./tmp")
+
 setInterval(() => {
     fs.rmSync("./tmp", { recursive:true, force:true})
     fs.mkdirSync("./tmp")
