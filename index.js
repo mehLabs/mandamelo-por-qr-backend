@@ -4,17 +4,20 @@ const fs = require('fs')
 const app = express();
 const path = require('path')
 const multer = require('multer')
+const maxSize = 1024*1024*1024;
 
 app.use(cors({
     origin: '*'
 }))
 
 //ANTES DE ABRIR EL SERVIDOR VOY A BORRAR TODOS LOS ARCHIVOS TEMPORALES
+fs.rmSync("./tmp", { recursive:true, force:true})
+fs.mkdirSync("./tmp")
 setInterval(() => {
     fs.rmSync("./tmp", { recursive:true, force:true})
     fs.mkdirSync("./tmp")
     
-}, 1000*60*60);
+}, 1000*60*30);
 //
 
 const server = require('http').createServer(app);
@@ -69,15 +72,25 @@ io.on('connection', (socket) => {
     socket.on('newRoom', ()=>{
         const id= socket.id;
         console.log("CREANDO NUEVA SALA. ID="+id)
-        socket.join(id);
-        newRoom(id);
+        socket.join("room:"+id);
+        newRoom("room:"+id);
         io.to(id).emit("newRoom",id)
+        let clientsInRoom = 0;
+        if (io.sockets.adapter.rooms.has("room"+id)) clientsInRoom = io.sockets.adapter.rooms.get("room"+id).size
+        console.log("Hay "+clientsInRoom+" en la misma sala")
     })
     socket.on('join', (id) => {
+        console.log(rooms)
         console.log("Usuario conectandose a la sala: "+id)
-        socket.join(id);
+        socket.join("room:"+id);
         let clientsInRoom = 0;
-        if (io.sockets.adapter.rooms.has(id)) clientsInRoom = io.sockets.adapter.rooms.get(id).size
+        if (io.sockets.adapter.rooms.has("room:"+id)) clientsInRoom = io.sockets.adapter.rooms.get("room:"+id).size
+        if (clientsInRoom <= 1) {
+            socket.emit("error", {
+                code: 0,
+                text: "emptyroom"
+            })
+        }
         console.log("Hay "+clientsInRoom+" en la misma sala")
     })
 
@@ -101,6 +114,13 @@ io.on('connection', (socket) => {
                 break;
             }
         }
+        console.log(rooms)
+        if (rooms.includes("room:"+socket.id)){
+            io.to("room:"+socket.id).emit("error",{
+                code:0,
+                text: "emptyroom"
+            })
+        }
         console.log(`Un usuario se ha desconectado. Tenemos ${users.length} clientes conectados.`);
     })
 
@@ -123,12 +143,17 @@ const sendFile = (originId,id,filename) => {
     }else{
         usuario.files.push(filename)
         io.to(id).emit("newFile",filename);
-        io.to(originId).emit("error",{
-            code: 1,
-            text: "Archivo enviado con éxito."
-        })
     }
 }
+
+
+const fileSizeLimitErrorHandler = (err, req, res, next) => {
+    if (err) {
+      res.sendStatus(413)
+    } else {
+        next()
+    }
+  }
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -141,18 +166,25 @@ const storage = multer.diskStorage({
         const id = req.params.pcID;
         const originId = req.query.id;
         const newName = "file-id_" + id + '-' + Date.now() +  ext;
+
+        if (req.headers['content-length'] > maxSize){
+            console.log("warning")
+        }else{
+            sendFile(originId,id,newName);
+        }
         cb(null, newName);
-        sendFile(originId,id,newName);
     }
 });
    
-var upload = multer({storage:storage})
+var upload = multer({
+    storage:storage,
+    limits: { fileSize: 1024*1024*1024}
+})
 
 
-app.post('/:pcID', upload.single('file'), (req,res,next) => {
-
-    console.log(`Subiendo archivo  para ${req.params.pcID}`)
-
+app.post('/:pcID', upload.single('file'), fileSizeLimitErrorHandler, (req,res,next) => {
+    console.log("File uploaded succesfully")
+    res.sendStatus(200)
 
 
 })
