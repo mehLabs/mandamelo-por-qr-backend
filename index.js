@@ -157,7 +157,7 @@ const sendFile = (originId,id,filename) => {
         usuario.files.push(filename)
         io.to(id).emit("newFile",filename);
         setTimeout(() => {
-            fs.unlink(`./tmp/${filename}`);
+            fs.unlink(`./tmp/${filename}`, (err) => console.log(err));
             let fileId = usuario.files.indexOf(filename);
             usuario.files.splice(fileId,1);
         }, 1000*60*30);
