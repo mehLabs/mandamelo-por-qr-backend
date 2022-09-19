@@ -11,13 +11,22 @@ app.use(cors({
 }))
 
 //ANTES DE ABRIR EL SERVIDOR VOY A BORRAR TODOS LOS ARCHIVOS TEMPORALES
-fs.rmSync("./tmp", { recursive:true, force:true})
-fs.mkdirSync("./tmp")
+const resetTemp = () => {
+    try {
+        fs.rmSync("./tmp", { recursive:true, force:true})
+        fs.mkdirSync("./tmp")
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+resetTemp();
 setInterval(() => {
-    fs.rmSync("./tmp", { recursive:true, force:true})
-    fs.mkdirSync("./tmp")
+    resetTemp();
     
-}, 1000*60*30);
+}, 1000*60*60*24);
+
+
 //
 
 const server = require('http').createServer(app);
@@ -108,7 +117,11 @@ io.on('connection', (socket) => {
             let clientId = users[i].id;
             if (socket.id === clientId){
                 for (let file of users[i].files){
-                    fs.unlinkSync(`./tmp/${file}`)
+                    try {
+                        fs.unlinkSync(`./tmp/${file}`)
+                    } catch (error) {
+                        console.log(error)
+                    }
                 }
                 users.splice(i,1);
                 break;
@@ -143,7 +156,14 @@ const sendFile = (originId,id,filename) => {
     }else{
         usuario.files.push(filename)
         io.to(id).emit("newFile",filename);
+        setTimeout(() => {
+            fs.unlink(`./tmp/${filename}`);
+            let fileId = usuario.files.indexOf(filename);
+            usuario.files.splice(fileId,1);
+        }, 1000*60*30);
+        
     }
+    
 }
 
 
@@ -193,7 +213,12 @@ app.get('/download/:file',(req,res) => {
     try{
         console.log("DESCARGANDO")
         
-        var filePath = path.join(__dirname, '/tmp/'+req.params.file);
+        try {
+            var filePath = path.join(__dirname, '/tmp/'+req.params.file);
+        } catch (error) {
+            console.log(error);
+            res.statusCode(404)
+        }
 
         res.contentType(path.basename(filePath));
         res.status(200).sendFile(filePath);
