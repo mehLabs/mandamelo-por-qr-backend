@@ -44,14 +44,11 @@ let users = [];
 let rooms = [];
 
 const getUser = (id) => {
-    console.log(`Buscando id ${id}`)
-    console.log(users)
     for (let i=0;i<users.length;i++){
         if (id === users[i].id){
             return users[i]
         }
     }
-    console.log("usuario no encontrado")
     return 0;
 }
 
@@ -143,19 +140,16 @@ app.get('/', (req,res)=> {
     res.send({response: "I'm alive"}).status(200);
 })
 
-const sendFile = (originId,id,filename) => {
+const sendFile = (originId,id,filename,fileId) => {
     var filePath = path.join(__dirname, '/tmp/'+filename);
     let usuario = getUser(id);
     if (usuario === 0){
-        console.log(originId) 
-        console.log("Error")
         io.to(originId).emit("error",{
             code: 1,
             text: "El otro usuario se ha desconectado, por favor escanee el QR otra vez."
         })
     }else{
         usuario.files.push(filename)
-        io.to(id).emit("newFile",filename);
         setTimeout(() => {
             fs.unlink(`./tmp/${filename}`, (err) => console.log(err));
             let fileId = usuario.files.indexOf(filename);
@@ -168,6 +162,7 @@ const sendFile = (originId,id,filename) => {
 
 
 const fileSizeLimitErrorHandler = (err, req, res, next) => {
+    console.log(req)
     if (err) {
       res.sendStatus(413)
     } else {
@@ -181,16 +176,23 @@ const storage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         const fileName = file.originalname.toLowerCase().split(' ').join('-');
+        console.log(fileName)
         var re = /(?:\.([^.]+))?$/;
         const ext = re.exec(fileName)[0];
         const id = req.params.pcID;
         const originId = req.query.id;
-        const newName = "file-id_" + id + '-' + Date.now() +  ext;
+        let simplyName = "file-id_" + id + '-' + Date.now()
+        let newName = simplyName +  ext;
+        const receiverUser = getUser(id)
+        if (receiverUser.files.includes(newName)){
+            simplyName.concat("1")
+            newName = simplyName + ext;
+        }
 
         if (req.headers['content-length'] > maxSize){
             console.log("warning")
         }else{
-            sendFile(originId,id,newName);
+            sendFile(originId,id,newName,fileName);
         }
         cb(null, newName);
     }
@@ -202,16 +204,23 @@ var upload = multer({
 })
 
 
-app.post('/:pcID', upload.single('file'), fileSizeLimitErrorHandler, (req,res,next) => {
-    console.log("File uploaded succesfully")
+app.post('/:pcID', upload.array('file'), fileSizeLimitErrorHandler, (req,res,next) => {
+    const files = req.files;
+    files.map( (file) => {
+        const filename = file.filename;
+        const originalname = file.originalname;
+        console.log("Enviando "+originalname)
+        io.to(req.params.pcID).emit("newFile",{filename:filename,originalname:originalname});
+    })
+
     res.sendStatus(200)
+    console.log("File uploaded succesfully")
 
 
 })
 
 app.get('/download/:file',(req,res) => {
     try{
-        console.log("DESCARGANDO")
         
         try {
             var filePath = path.join(__dirname, '/tmp/'+req.params.file);
